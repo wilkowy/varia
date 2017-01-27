@@ -1,13 +1,16 @@
-# TVP - TCL Validator in Perl v1.9
-# Copyright (c) 2007-2016 by wilk wilkowy
+# TVP - TCL Validator in Perl v1.12
+# Copyright (c) 2007-2017 by wilk wilkowy
 # All rights reserved.
 
-# ToDo: validate map arrays
+# ToDo:
+# - validate map arrays
+# - problem with recognizing unused global vars...
 
 use strict;
 use warnings;
+use Storable qw/store retrieve/;
 
-die "Usage: tvp [-h] [-g <file>] [-p <file>] [-i <file>] [-d <0-5>] <file...>\n" if (@ARGV < 1);
+die "Usage: tvp [-h] [-pf/pl -pu <tmp_file>] [-gf/gl -gu <tmp_file>] [-g <file>] [-p <file>] [-i <file>] [-d <0-5>] <file...>\n" if (@ARGV < 1);
 
 sub DBG_NONE { return 0; } # no output
 sub DBG_ERRS { return 1; } # errors
@@ -28,6 +31,13 @@ my %fignore;
 my %var;
 my %proc;
 
+my $globals_usage_state = 1;
+my $procs_usage_state = 1;
+my $globals_usage_file = '';
+my $procs_usage_file = '';
+my $globals_usage = {};
+my $procs_usage = {};
+
 my $import_all = 0;
 my $import_pattern = '';
 
@@ -35,8 +45,27 @@ while (1) {
 	my $arg = shift;
 	last if (!defined($arg) || ($arg eq ''));
 	my $file;
-	if ($arg eq '-h') {
-		$header = 1;
+	if ($arg eq '-pf')	{ $procs_usage_state = 0;	next; }
+	if ($arg eq '-pl')	{ $procs_usage_state = 2;	next; }
+	if ($arg eq '-gf')	{ $globals_usage_state = 0;	next; }
+	if ($arg eq '-gl')	{ $globals_usage_state = 2;	next; }
+	if ($arg eq '-h')	{ $header = 1;				next; }
+	if ($arg eq '-gu') {
+		$globals_usage_file = shift;
+		if ($globals_usage_state != 0) {
+			if (-e $globals_usage_file) {
+				$globals_usage = retrieve($globals_usage_file);
+			}
+		}
+		next;
+	}
+	if ($arg eq '-pu') {
+		$procs_usage_file = shift;
+		if ($procs_usage_state != 0) {
+			if (-e $procs_usage_file) {
+				$procs_usage = retrieve($procs_usage_file);
+			}
+		}
 		next;
 	}
 	if ($arg eq '-g') {
@@ -44,7 +73,11 @@ while (1) {
 		open(F, $file) or die "$!: $file\n";
 		while (<F>) {
 			chomp;
-			$fglobal{$_} = 0 if (!/^ *$/ && !/^#/);
+			if (!/^ *$/ && !/^#/) {
+				warn "\nduplicate (g): $_" if (exists($fglobal{$_}));
+				$fglobal{$_} = 0;
+				$globals_usage->{$_} = 0 if ($globals_usage_state == 0);
+			}
 		}
 		close F;
 		$globals = scalar keys %fglobal;
@@ -55,7 +88,11 @@ while (1) {
 		open(F, $file) or die "$!: $file\n";
 		while (<F>) {
 			chomp;
-			$fproc{$_} = 0 if (!/^ *$/ && !/^#/);
+			if (!/^ *$/ && !/^#/) {
+				warn "\nduplicate (p): $_" if (exists($fproc{$_}));
+				$fproc{$_} = 0;
+				$procs_usage->{$_} = 0 if ($procs_usage_state == 0);
+			}
 		}
 		close F;
 		$procs = scalar keys %fproc;
@@ -66,7 +103,10 @@ while (1) {
 		open(F, $file) or die "$!: $file\n";
 		while (<F>) {
 			chomp;
-			$fignore{$_} = 0 if (!/^ *$/ && !/^#/);
+			if (!/^ *$/ && !/^#/) {
+				warn "\nduplicate (i): $_" if (exists($fignore{$_}));
+				$fignore{$_} = 0;
+			}
 		}
 		close F;
 		$ignores = scalar keys %fignore;
@@ -85,12 +125,13 @@ foreach my $file (@files) {
 }
 
 sub validate {
+	my $fname = shift;
 	#my %var;
 	my $proc = '';
 	my $depth = 0;
 
-	syswrite STDOUT, "Validating $_[0]\n" if ($header);
-	open(F, $_[0]) or die "$!: $_[0]\n";
+	syswrite STDOUT, "Validating $fname\n" if ($header);
+	open(F, $fname) or die "$!: $fname\n";
 	while (<F>) {
 		chomp;
 		s/\t/ /g;
@@ -302,6 +343,15 @@ sub validate {
 				}
 				print "U ($var): $_\n" if ($debug >= DBG_USES);
 			}
+			while (/array names +([0-9a-zA-Z_]+)/g) {
+				my $var = $1;
+				if (is_var($var)) {
+					use_var($var, $.);
+				} else {
+					print "E ($.): undeclared variable \"$var\" in \"$proc\"\n" if ($debug >= DBG_ERRS);
+				}
+				print "U ($var): $_\n" if ($debug >= DBG_USES);
+			}
 			while (/unset +([0-9a-zA-Z_]+)/g) {
 				my $var = $1;
 				if (is_var($var)) {
@@ -322,107 +372,137 @@ sub validate {
 	show_unused_vars($proc);
 	close F;
 }
-#show_unused_globs();
-#show_unused_procs();
+show_unused_globs();
+show_unused_procs();
 
 sub new_var {
-	$var{$_[0]} = "$_[1] 0 0 0";
+	my ($var, $type) = @_;
+	$var{$var} = "$type 0 0 0";
+	$globals_usage->{$var}++ if ($type eq 'g');
 }
 
 sub new_proc {
-	my $proc = $_[0];
+	my $proc = shift;
 	$proc{$proc} = '0';
 	if ($procs && !defined($fproc{$proc})) {
 		print "W ($.): unknown procedure \"$proc\"\n" if ($debug >= DBG_WARN);
 	}
+	$procs_usage->{$proc}++;
 }
 
 sub get_type {
-	return '?' if (!defined($var{$_[0]}));
-	my @para = split(/ /, $var{$_[0]});
+	my $var = shift;
+	return '?' if (!defined($var{$var}));
+	my @para = split(/ /, $var{$var});
 	return $para[0];
 }
 
 sub is_init {
-	return 0 if (!defined($var{$_[0]}));
-	my @para = split(/ /, $var{$_[0]});
+	my $var = shift;
+	return 0 if (!defined($var{$var}));
+	my @para = split(/ /, $var{$var});
 	return $para[1];
 }
 
 sub get_uses {
-	return 0 if (!defined($var{$_[0]}));
-	my @para = split(/ /, $var{$_[0]});
+	my $var = shift;
+	return 0 if (!defined($var{$var}));
+	my @para = split(/ /, $var{$var});
 	return $para[2];
 }
 
 sub last_use {
-	return 0 if (!defined($var{$_[0]}));
-	my @para = split(/ /, $var{$_[0]});
+	my $var = shift;
+	return 0 if (!defined($var{$var}));
+	my @para = split(/ /, $var{$var});
 	return $para[3];
 }
 
 sub init_var {
-	return 0 if (!defined($var{$_[0]}));
-	my @para = split(/ /, $var{$_[0]});
+	my ($var, $line) = @_;
+	return 0 if (!defined($var{$var}));
+	my @para = split(/ /, $var{$var});
 	$para[1] = 1;
-	$var{$_[0]} = "$para[0] $para[1] $para[2] $_[1]";
+	$var{$var} = "$para[0] $para[1] $para[2] $line";
+	#if ($para[0] eq 'g') {
+		if (exists($globals_usage->{$var})) {
+			$globals_usage->{$var}++;
+	#	} else {
+	#		print "E ($line): OMG $var\n";
+		}
+	#}
 	return 1;
 }
 
 sub use_var {
-	return 0 if (!defined($var{$_[0]}));
-	my @para = split(/ /, $var{$_[0]});
+	my ($var, $line) = @_;
+	return 0 if (!defined($var{$var}));
+	my @para = split(/ /, $var{$var});
 	$para[2]++;
-	$var{$_[0]} = "$para[0] $para[1] $para[2] $_[1]";
+	$var{$var} = "$para[0] $para[1] $para[2] $line";
+	#if ($para[0] eq 'g') {
+		if (exists($globals_usage->{$var})) {
+			$globals_usage->{$var}++;
+	#	} else {
+	#		print "E ($line): OMG $var\n";
+		}
+	#}
 	return 1;
 }
 
 sub is_var {
-	return 1 if ((($import_all == 1) && ($_[0] =~ /$import_pattern/)) || defined($var{$_[0]}));
+	my $var = shift;
+	return 1 if ((($import_all == 1) && ($var =~ /$import_pattern/)) || defined($var{$var}));
 	return 0 ;
 }
 
 sub is_proc {
-	return 1 if (defined($proc{$_[0]}));
+	my $proc = shift;
+	return 1 if (defined($proc{$proc}));
 	return 0;
 }
 
 sub is_local {
-	return 1 if (get_type($_[0]) eq 'l');
+	my $var = shift;
+	return 1 if (get_type($var) eq 'l');
 	return 0;
 }
 
 sub is_global {
-	return 1 if (get_type($_[0]) eq 'g');
+	my $var = shift;
+	return 1 if (get_type($var) eq 'g');
 	return 0;
 }
 
 sub is_arg {
-	return 1 if (get_type($_[0]) eq 'a');
+	my $var = shift;
+	return 1 if (get_type($var) eq 'a');
 	return 0;
 }
 
 sub is_ref {
-	return 1 if (get_type($_[0]) eq 'r');
+	my $var = shift;
+	return 1 if (get_type($var) eq 'r');
 	return 0;
 }
 
 sub is_not_local {
-	return 1 if (is_global($_[0]) || is_arg($_[0]) || is_ref($_[0]));
+	my $var = shift;
+	return 1 if (is_global($var) || is_arg($var) || is_ref($var));
 	return 0;
 }
 
 sub feed_vars {
-	my $proc = $_[0];
-	if ($_[1] =~ /\{\*\}\[info globals (.+?)\]/) {
+	my ($proc, $list) = @_;
+	if ($list =~ /\{\*\}\[info globals (.+?)\]/) {
 		$import_pattern = $1;
 		$import_pattern =~ s/\*/.+/g;
 		$import_all = 1;
 		print "V (p): $1 ($import_pattern)\n" if ($debug >= DBG_USES);
 	} else {
-		my @vars = split(/ /, $_[1]);
+		my @vars = split(/ /, $list);
 		foreach my $var (@vars) {
-			if ($globals && !defined($fglobal{$var}) && !$ignores && !defined($fignore{$var})) {
+			if ($globals && !defined($fglobal{$var}) && (!$ignores || !defined($fignore{$var}))) {
 				print "W ($.): unknown global variable \"$var\" in \"$proc\"\n" if ($debug >= DBG_WARN);
 			}
 			print "W ($.): redeclared variable \"$var\" in \"$proc\"\n" if (is_var($var) && ($debug >= DBG_WARN));
@@ -433,8 +513,8 @@ sub feed_vars {
 }
 
 sub feed_args {
-	my $proc = $_[0];
-	my @vars = split(/ /, $_[1]);
+	my ($proc, $list) = @_;
+	my @vars = split(/ /, $list);
 	foreach my $var (@vars) {
 		#if ($var !~ /-?[0-9]/) {
 			print "E ($.): redeclared argument \"$var\" in \"$proc\"\n" if (is_arg($var) && ($debug >= DBG_ERRS));
@@ -445,25 +525,43 @@ sub feed_args {
 }
 
 sub show_unused_vars {
-	my $proc = $_[0];
+	my $proc = shift;
 	foreach my $var (keys %var) {
-		print "W: unused global variable \"$var\" in \"$proc\"\n" if (is_global($var) && (get_uses($var) == 0) && !$ignores && !defined($fignore{$var}) && ($debug >= DBG_WARN));
+		print "W: unused global variable \"$var\" in \"$proc\"\n" if (is_global($var) && (get_uses($var) == 0) && (!$ignores || !defined($fignore{$var})) && ($debug >= DBG_WARN));
 		print "W (".last_use($var)."): unused local variable \"$var\" in \"$proc\"\n" if (is_local($var) && (get_uses($var) == 0) && ($debug >= DBG_WARN));
 		print "W (".last_use($var)."): unused reference \"$var\" in \"$proc\"\n" if (is_ref($var) && (get_uses($var) == 0) && ($debug >= DBG_WARN));
 		print "I: unused argument \"$var\" in \"$proc\"\n" if (is_arg($var) && (get_uses($var) == 0) && ($debug >= DBG_INFO));
-		print "I (".last_use($var)."): once used local variable \"$var\" in \"$proc\"\n" if (is_local($var) && (get_uses($var) == 1) && ($debug >= DBG_INFO));
+		print "I (".last_use($var)."): single use local variable \"$var\" in \"$proc\"\n" if (is_local($var) && (get_uses($var) == 1) && ($debug >= DBG_INFO));
 	}
 	undef %var;
 }
 
 sub show_unused_globs {
-	foreach my $glob (keys %fglobal) {
-		print "I: cryptic global variable \"$glob\"\n" if (!exists($var{$glob}) && ($debug >= DBG_INFO));
+	return if ($globals_usage_file eq '');
+	store($globals_usage, $globals_usage_file);
+	if ($globals_usage_state == 2) {
+		unlink($globals_usage_file) or warn "$!: $globals_usage_file\n";
+		my $was = 0;
+		foreach my $glob (keys %$globals_usage) {
+			if (($globals_usage->{$glob} == 0) && ($debug >= DBG_INFO)) {
+				print "\n" if ($was++ == 0);
+				print "I: cryptic global variable \"$glob\"\n";
+			}
+		}
 	}
 }
 
 sub show_unused_procs {
-	foreach my $proc (keys %fproc) {
-		print "I: cryptic procedure \"$proc\"\n" if (!exists($proc{$proc}) && ($debug >= DBG_INFO));
+	return if ($procs_usage_file eq '');
+	store($procs_usage, $procs_usage_file);
+	if ($procs_usage_state == 2) {
+		unlink($procs_usage_file) or warn "$!: $procs_usage_file\n";
+		my $was = 0;
+		foreach my $proc (keys %$procs_usage) {
+			if (($procs_usage->{$proc} == 0) && ($debug >= DBG_INFO)) {
+				print "\n" if ($was++ == 0);
+				print "I: cryptic procedure \"$proc\"\n";
+			}
+		}
 	}
 }
