@@ -1,14 +1,17 @@
-# TVP - TCL Validator in Perl v1.12
-# Copyright (c) 2007-2017 by wilk wilkowy
+# TVP - TCL Validator in Perl v1.13
+# Copyright (c) 2007-2019 by wilk wilkowy
 # All rights reserved.
 
 # ToDo:
 # - validate map arrays
-# - problem with recognizing unused global vars...
+
+# - problem with tracking global vars?
+# - problem with tracking procs?
 
 use strict;
 use warnings;
 use Storable qw/store retrieve/;
+use Data::Dumper;
 
 die "Usage: tvp [-h] [-pf/pl -pu <tmp_file>] [-gf/gl -gu <tmp_file>] [-g <file>] [-p <file>] [-i <file>] [-d <0-5>] <file...>\n" if (@ARGV < 1);
 
@@ -55,6 +58,11 @@ while (1) {
 		if ($globals_usage_state != 0) {
 			if (-e $globals_usage_file) {
 				$globals_usage = retrieve($globals_usage_file);
+				#foreach my $glob (keys %$globals_usage) {
+				#	warn "\nduplicate (g): $glob" if (exists($fglobal{$glob}));
+				#	$fglobal{$glob} = 0;
+				#}
+				#$globals += scalar keys %$globals_usage;
 			}
 		}
 		next;
@@ -64,6 +72,11 @@ while (1) {
 		if ($procs_usage_state != 0) {
 			if (-e $procs_usage_file) {
 				$procs_usage = retrieve($procs_usage_file);
+				#foreach my $proc (keys %$procs_usage) {
+				#	warn "\nduplicate (p): $proc" if (exists($fproc{$proc}));
+				#	$fproc{$proc} = 0;
+				#}
+				#$procs += scalar keys %$procs_usage;
 			}
 		}
 		next;
@@ -71,50 +84,65 @@ while (1) {
 	if ($arg eq '-g') {
 		$file = shift;
 		open(F, $file) or die "$!: $file\n";
+		my $cnt = 0;
 		while (<F>) {
 			chomp;
-			if (!/^ *$/ && !/^#/) {
+			if (!/^\s*$/ && !/^\s*#/) {
 				warn "\nduplicate (g): $_" if (exists($fglobal{$_}));
 				$fglobal{$_} = 0;
-				$globals_usage->{$_} = 0 if ($globals_usage_state == 0);
+				#$globals_usage->{$_} = 0 if ($globals_usage_state == 0);
+				$globals_usage->{$_} //= 0;
+				$cnt++
 			}
 		}
 		close F;
-		$globals = scalar keys %fglobal;
+		#$globals += scalar keys %fglobal;
+		$globals += $cnt;
+		print "globals: $globals\n" if ($debug >= DBG_DUMP);
 		next;
 	}
 	if ($arg eq '-p') {
 		$file = shift;
 		open(F, $file) or die "$!: $file\n";
+		my $cnt = 0;
 		while (<F>) {
 			chomp;
-			if (!/^ *$/ && !/^#/) {
+			if (!/^\s*$/ && !/^\s*#/) {
 				warn "\nduplicate (p): $_" if (exists($fproc{$_}));
 				$fproc{$_} = 0;
-				$procs_usage->{$_} = 0 if ($procs_usage_state == 0);
+				#$procs_usage->{$_} = 0 if ($procs_usage_state == 0);
+				$procs_usage->{$_} //= 0;
+				$cnt++;
 			}
 		}
 		close F;
-		$procs = scalar keys %fproc;
+		#$procs += scalar keys %fproc;
+		$procs += $cnt;
+		print "procs: $procs\n" if ($debug >= DBG_DUMP);
 		next;
 	}
 	if ($arg eq '-i') {
 		$file = shift;
 		open(F, $file) or die "$!: $file\n";
+		my $cnt = 0;
 		while (<F>) {
 			chomp;
-			if (!/^ *$/ && !/^#/) {
+			if (!/^\s*$/ && !/^\s*#/) {
 				warn "\nduplicate (i): $_" if (exists($fignore{$_}));
 				$fignore{$_} = 0;
+				$cnt++;
 			}
 		}
 		close F;
-		$ignores = scalar keys %fignore;
+		#$ignores += scalar keys %fignore;
+		$ignores += $cnt;
+		print "ignores: $ignores\n" if ($debug >= DBG_DUMP);
 		next;
 	}
 	if ($arg eq '-d') {
 		$debug = shift;
 		$debug = DBG_NONE if (($debug < 0) || ($debug > 5));
+		print "debug: $debug\n" if ($debug >= DBG_DUMP);
 		next;
 	}
 	push(@files, $arg);
@@ -135,9 +163,9 @@ sub validate {
 	while (<F>) {
 		chomp;
 		s/\t/ /g;
-		s/ +/ /g;
-		s/^ //;
-		s/ $//;
+		s/\s+/ /g;
+		s/^\s//;
+		s/\s$//;
 		next if (/^#/);
 		if (!/^#/ && !/^$/) {
 			$depth += tr/{/{/;
@@ -148,6 +176,10 @@ sub validate {
 			print "X: leaving \"$proc\"\n" if ($debug >= DBG_USES);
 			show_unused_vars($proc);
 			$proc = '';
+		}
+		if (/\[([_a-zA-Z0-9:]+?)( +.+)?\]/) {
+			my $call = $1;
+			proc_call($call);
 		}
 		if ((/^proc +([_a-zA-Z0-9:]+?) +{ *(([^{}]+?|{ *[^{}]+? +.+? *} *)+?)? *}/) && ($proc eq '')) {
 			$proc = $1;
@@ -182,9 +214,11 @@ sub validate {
 			if (tr/\[/\[/ != tr/\]/\]/) {
 				print "E ($.): odd square brackets in \"$proc\"\n" if ($debug >= DBG_ERRS);
 			}
-			#if (tr/\(/\(/ != tr/\)/\)/) {
-			#	print "E ($.): odd brackets in \"$proc\"\n" if ($debug >= DBG_ERRS);
-			#}
+			if (/^if\s*\{/ || /expr\s*\{/) {
+				if (tr/\(/\(/ != tr/\)/\)/) {
+					print "E ($.): odd brackets in \"$proc\"\n" if ($debug >= DBG_ERRS);
+				}
+			}
 			if (/^global +(.+)/) {
 				feed_vars($proc, $1);
 			}
@@ -378,16 +412,33 @@ show_unused_procs();
 sub new_var {
 	my ($var, $type) = @_;
 	$var{$var} = "$type 0 0 0";
-	$globals_usage->{$var}++ if ($type eq 'g');
+	#$globals_usage->{$var}++ if ($type eq 'g');
 }
 
 sub new_proc {
 	my $proc = shift;
 	$proc{$proc} = '0';
+	if (defined($procs_usage->{$proc}) && ($procs_usage->{$proc} > 1)) {
+		print "W ($.): redeclared procedure \"$proc\"\n" if ($debug >= DBG_WARN);
+	}
 	if ($procs && !defined($fproc{$proc})) {
 		print "W ($.): unknown procedure \"$proc\"\n" if ($debug >= DBG_WARN);
 	}
 	$procs_usage->{$proc}++;
+}
+
+sub proc_call {
+	my $proc = shift;
+	return;
+	return if ($proc =~ /^(info|expr|list|array|string|lindex|split|join|llength|lreplace|lsort|open|gets|file|format|set|lsearch|uname|strftime|lrange|scan|linsert|clock|regsub|catch)$/);
+	return if ($proc =~ /^(unixtime|rand|timer|utimer|unames|isbotnick|onchan|passwdok|matchattr|getchanidle|chanlist|botonchan|encrypt|encpass|duration|isop|ishalfop|isvoice|decrypt)$/);
+	if (!defined($procs_usage->{$proc})) {
+		print "W ($.): unknown procedure \"$proc\"\n" if ($debug >= DBG_WARN);
+	} else {
+		my @para = split(/ /, $proc{$proc});
+		$para[0]++;
+		$proc{$proc} = "$para[0]";
+	}
 }
 
 sub get_type {
@@ -502,6 +553,7 @@ sub feed_vars {
 	} else {
 		my @vars = split(/ /, $list);
 		foreach my $var (@vars) {
+			#!!! 0 &&
 			if ($globals && !defined($fglobal{$var}) && (!$ignores || !defined($fignore{$var}))) {
 				print "W ($.): unknown global variable \"$var\" in \"$proc\"\n" if ($debug >= DBG_WARN);
 			}
