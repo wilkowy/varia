@@ -1,5 +1,5 @@
 # varia
-My various scripts/utilities.
+My various scripts/utilities. Check **Wiki** for more informations and examples.
 
 - eggdrop/ - things related to Eggdrop IRC bot
 
