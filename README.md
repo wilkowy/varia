@@ -1,5 +1,5 @@
 # varia
-My various scripts/utilities. Check **[Wiki](https://github.com/wilkowy/varia/wiki)** for more informations and examples.
+My various scripts/utilities. Check [Wiki](https://github.com/wilkowy/varia/wiki) for more informations and examples.
 
 - eggdrop/ - things related to Eggdrop IRC bot
 
