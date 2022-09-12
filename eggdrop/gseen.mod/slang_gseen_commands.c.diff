@@ -1,0 +1,8 @@
+--- slang_gseen_commands.c	Sat Oct 26 13:18:06 2002
++++ slang_gseen_commands_year.c	Thu Feb 13 00:52:18 2020
+@@ -71 +71 @@
+-    strftime(t, 19, "%d.%m. %H:%M", localtime(&tt));
++    strftime(t, sizeof(t), "%d.%m.%Y %H:%M", localtime(&tt));
+@@ -162 +162 @@
+-    strftime(t, sizeof(t), "%d.%m. %H:%M", localtime(&tt));
++    strftime(t, sizeof(t), "%d.%m.%Y %H:%M", localtime(&tt));
