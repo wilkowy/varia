@@ -1,0 +1,6 @@
+--- eggdrop.h	Sat Jul  9 18:07:48 2011
++++ eggdrop_handlen15.h	Sat Feb 24 13:42:36 2018
+@@ -52 +52,2 @@
+-#define HANDLEN 9   /* valid values 9->NICKMAX  */
++//#define HANDLEN 9   /* valid values 9->NICKMAX  */
++#define HANDLEN 15  /* valid values 9->NICKMAX  */

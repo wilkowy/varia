@@ -1,0 +1,8 @@
+--- dcc.c	Sun Mar  6 01:50:01 2022
++++ dcc_fix_ssl.c	Fri May 20 09:46:00 2022
+@@ -246,0 +247 @@
++#ifdef TLS
+@@ -247,0 +249,3 @@
++#else
++  addbot(dcc[idx].nick, dcc[idx].nick, botnetnick, '-', dcc[idx].u.bot->numver, 0);
++#endif

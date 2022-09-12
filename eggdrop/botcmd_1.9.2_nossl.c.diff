@@ -1,0 +1,8 @@
+--- botcmd.c	Sun Mar  6 01:50:01 2022
++++ botcmd_fix_ssl.c	Fri May 20 09:45:38 2022
+@@ -725,0 +726 @@
++#ifdef TLS
+@@ -726,0 +728,3 @@
++#else
++  addbot(newbot, dcc[idx].nick, next, x, i, 0);
++#endif

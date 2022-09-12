@@ -1,0 +1,10 @@
+--- tclhash.c	Tue Jun 29 17:52:24 2010
++++ tclhash_fix_tcl_8.5.c	Sat Feb 24 13:43:57 2018
+@@ -1267 +1267,2 @@
+-    l = nmalloc(Tcl_ScanElement(p, &k));
++    //l = nmalloc(Tcl_ScanElement(p, &k));
++    l = nmalloc(Tcl_ScanElement(p, &k) + 1);
+@@ -1285 +1286,2 @@
+-    l = nmalloc(Tcl_ScanElement(p, &k));
++    //l = nmalloc(Tcl_ScanElement(p, &k));
++    l = nmalloc(Tcl_ScanElement(p, &k) + 1);

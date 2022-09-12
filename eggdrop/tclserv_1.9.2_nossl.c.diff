@@ -1,0 +1,8 @@
+--- tclserv.c	Sun Mar  6 01:50:01 2022
++++ tclserv_fix_ssl.c	Fri May 20 09:54:09 2022
+@@ -533,0 +534 @@
++#ifdef TLS
+@@ -534,0 +536,3 @@
++#else
++      snprintf(s, sizeof s, "%s%d", "", z->port);
++#endif
