@@ -1,0 +1,103 @@
+--- stats.help	Sat Oct 26 19:44:20 2002
++++ stats_fix.help	Thu Jun  3 03:13:28 2021
+@@ -3 +3,3 @@
+-  Saves all data.
++   Saves all data.
++
++See also: purgestats
+@@ -6 +8,3 @@
+-  resets all statistics of <user> in <chan> to 0.
++   Resets all channel statistics of user to 0.
++
++See also: purgestats, savestats
+@@ -9,2 +13,4 @@
+-  displays a list of users on the channel, listing their nicks and
+-  corresponding stats-usernames.
++   Displays a list of users on the channel, listing their nicks and
++   corresponding stats-usernames.
++
++See also: swhois
+@@ -13,4 +19,6 @@
+-  displays information about <user> (stat-flags, hosts, etc...)
+-  flags:
+-    +/-list: list a user in the top10/20/etc?
+-    +/-addhosts: automatically add new hosts to user?
++   Displays information about user (stat-flags, hosts, etc...).
++   Flags:
++     +/-list: list a user in the top10/20/etc?
++     +/-addhosts: automatically add new hosts to user?
++
++See also: schattr, smatch
+@@ -19 +27,3 @@
+-  adds a host to <user>
++   Adds a host to user.
++
++See also: -shost
+@@ -22 +32,3 @@
+-  removes a host from <user>
++   Removes a host from user.
++
++See also: +shost
+@@ -25 +37,3 @@
+-  creates a new stat-user record
++   Creates a new stat-user record.
++
++See also: -suser, +shost, -shost
+@@ -28 +42,3 @@
+-  deletes a stat-user
++   Deletes a stat-user.
++
++See also: +suser
+@@ -31 +47,3 @@
+-  changes the flags of a stat-user
++   Changes the flags of a stat-user.
++
++See also: swhois
+@@ -34,2 +52,3 @@
+-  displays all matching users
+-  wildcards allowed.
++   Displays all matching users. Wildcards allowed.
++
++See also: swhois
+@@ -38 +57,3 @@
+-  changes the name of an user
++   Changes the name of an user.
++
++See also: +suser, -suser, sumuser
+@@ -41 +62 @@
+-   writes the static (*cough*!) webfiles for the given channels.
++   Writes the static (*cough*!) webfiles for the given channels.
+@@ -44 +65,3 @@
+-   purges all outdates statistics and deletes old users
++   Purges all outdated statistics and deletes old users.
++
++See also: savestats
+@@ -47 +70,3 @@
+-   transfers all stats from user2 to user1 and deletes user2
++   Transfers all stats from user2 to user1 and deletes user2.
++
++See also: chsusername
+@@ -49 +74 @@
+-###  help on the %bstats module%b
++###  %bstats module%b commands
+@@ -52 +77 @@
+-   for ops:
++   For ops:
+@@ -56 +81 @@
+-   for masters:
++   For masters:
+@@ -70 +95 @@
+-   There is also a list of tcl settings avalible,
++   There is also a list of tcl settings available,
+@@ -73 +98 @@
+-###  commands for the %bstats module%b
++###  %bstats module%b commands
+@@ -76 +101 @@
+-   for ops:
++   For ops:
+@@ -80 +105 @@
+-   for masters:
++   For masters:
+@@ -94 +119 @@
+-   There is also a list of tcl settings avalible,
++   There is also a list of tcl settings available,

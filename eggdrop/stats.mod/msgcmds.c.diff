@@ -1,0 +1,12 @@
+--- msgcmds.c	Fri Sep 24 16:51:49 2010
++++ msgcmds_https.c	Thu Jun  3 21:52:22 2021
+@@ -261,4 +261 @@
+-  if (strncasecmp(rest, "http://", 7)) {
+-    url = nmalloc(7 + strlen(rest) + 1);
+-    sprintf(url, "http://%s", rest);
+-  } else {
++  if (!strncasecmp(rest, "http://", 7) || !strncasecmp(rest, "https://", 8)) {
+@@ -266,0 +264,3 @@
++  } else {
++    url = nmalloc(7 + strlen(rest) + 1);
++    sprintf(url, "http://%s", rest);
