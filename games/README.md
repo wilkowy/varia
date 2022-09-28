@@ -1,0 +1,2 @@
+- **ElevatorSaga.js** - script for [Elevator Saga](https://play.elevatorsaga.com)
+- **WarriorJS.js** - scirpt for [WarriorJS](https://warriorjs.com)
